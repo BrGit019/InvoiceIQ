@@ -1,95 +1,82 @@
-
 # InvoiceIQ
 ### AI-Powered Invoice Processing & Accounting Automation
 
-InvoiceIQ is a Python-based accounting automation application that extracts financial information from PDF invoices, validates accounting calculations, identifies potential duplicate invoices, and generates formatted Excel reports.
+**[Live Demo](https://invoiceiq-jhszwqdancybhilnyjcjew.streamlit.app/)** | **[GitHub Repository](https://github.com/BrGit019/InvoiceIQ)**
 
-Built to demonstrate the application of accounting principles, Python programming, and artificial intelligence to financial data processing.
+InvoiceIQ is a Python-based accounting automation application that processes PDF invoices, extracts structured financial information using artificial intelligence, validates accounting calculations, detects potential duplicate invoices, and generates professional Excel reports.
 
-## Features
+The project demonstrates how accounting principles, programming, and artificial intelligence can be combined to improve financial data processing, identify discrepancies, and support internal accounting controls.
 
-- AI-powered invoice data extraction
-- PDF invoice processing
-- Automated subtotal and total reconciliation
-- Duplicate invoice detection
-- Accounting exception identification
-- Interactive Streamlit dashboard
-- Four-sheet Excel report generation
-- Session-state caching to reduce unnecessary API requests
+## Live Interactive Demo
 
-## Technologies
+**Try InvoiceIQ:** https://invoiceiq-jhszwqdancybhilnyjcjew.streamlit.app/
 
-- Python
-- Streamlit
-- OpenAI API
-- PyMuPDF
-- OpenPyXL
-- Git and GitHub
+The publicly deployed application uses five fictional invoices to demonstrate the accounting validation and reporting workflow without requiring an OpenAI API key.
 
-## Accounting Validation
+Visitors can:
 
-InvoiceIQ checks:
+- Explore invoice information and individual line items.
+- Review automated accounting validation results.
+- Identify duplicate invoices and financial discrepancies.
+- View an interactive accounting dashboard.
+- Download a professionally formatted Excel accounting report.
 
-1. Required invoice information
-2. Line-item totals against reported subtotals
-3. Subtotal plus tax against reported totals
-4. Potential duplicate vendor and invoice-number combinations
+The public demo does not perform live AI extraction or require paid API requests.
 
-Invoices with identified exceptions are flagged for manual review.
+## Key Features
 
-## Excel Reporting
+**AI-Powered Invoice Extraction**
+- Extracts structured accounting data from PDF invoices using the OpenAI API.
+- Identifies vendors, invoice numbers, dates, expense categories, subtotals, taxes, totals, and line items.
+- Uses session-state caching to avoid unnecessary repeat API requests.
 
-The application generates four worksheets:
+**Automated Accounting Validation**
+- Verifies required invoice information.
+- Reconciles individual line items against reported subtotals.
+- Checks subtotal and tax calculations against reported invoice totals.
+- Flags potential duplicate invoices based on vendor and invoice-number combinations.
+
+**Interactive Accounting Dashboard**
+- Displays total invoices processed.
+- Tracks invoices passing automated validation.
+- Identifies invoices requiring manual review.
+- Calculates approved expenses, excluding invoices with identified exceptions.
+
+**Professional Excel Reporting**
+
+Generates four formatted worksheets:
 
 1. Invoice Summary
 2. Line Items
 3. Expense Analysis
 4. Exceptions Report
 
-Expense Analysis includes only invoices that pass automated validation.
+Reports include formatted financial values, organized invoice records, and highlighted accounting exceptions.
+
+## Accounting Controls
+
+InvoiceIQ implements automated checks designed to identify common invoice-processing errors.
+
+| Accounting Control | Purpose |
+|---|---|
+| Required Information | Identifies missing invoice details |
+| Subtotal Reconciliation | Compares line-item amounts with reported subtotals |
+| Total Reconciliation | Verifies subtotal plus tax equals the reported total |
+| Duplicate Detection | Flags repeated vendor and invoice-number combinations |
+| Exception Reporting | Separates invoices requiring manual review |
+| Expense Approval Filtering | Excludes flagged invoices from approved expense totals |
+
+Automated validation supports accounting review but does not replace professional judgment or manual verification.
 
 ## Reliability Testing
 
-InvoiceIQ successfully passed 18 automated tests covering accounting validation, duplicate detection, and PDF extraction behavior.
+InvoiceIQ passed 18 automated tests covering accounting validation, duplicate detection, and PDF extraction reliability.
 
-Additional regression testing verified the Streamlit dashboard, Excel reporting, and cached extraction reuse.
+Additional testing verified:
 
-## Installation
-
-Clone the repository and install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Create a `.env` file containing:
-
-```env
-OPENAI_API_KEY=your_api_key_here
-```
-
-Run the application:
-
-```bash
-streamlit run app.py
-```
-
-An OpenAI API key with available credits is required for new AI extraction requests.
-
-## Disclaimer
-
-InvoiceIQ is an educational accounting automation project.
-
-Extracted information should be reviewed before being used for financial reporting or payment processing.
-
-All demonstration invoices contain fictional data.
-
-## Project Status
-
-Functional prototype — tested with fictional invoices.
-
-## Author
-
-Ibrahim Abbas
-
-Accounting Student | Whitworth University
+- Consistent accounting validation results.
+- Duplicate detection across invoices.
+- PDF extraction error handling.
+- Session-state extraction caching.
+- Interactive dashboard functionality.
+- Four-
