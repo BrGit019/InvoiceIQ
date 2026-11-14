@@ -1,11 +1,12 @@
 
 import hashlib
+import os
+from types import SimpleNamespace
 from decimal import Decimal, InvalidOperation
 
 import streamlit as st
 
 from pdf_extractor import extract_pdf_text
-from ai_extractor import extract_invoice_data
 from accounting_validator import (
     validate_invoice,
     detect_duplicates
@@ -119,87 +120,128 @@ st.divider()
 
 
 # ==========================================
-# UPLOAD SECTION
+# DEPLOYMENT MODE
 # ==========================================
-
-st.header("1. Upload Invoices")
-
-uploaded_files = st.file_uploader(
-    "Choose PDF invoices",
-    type=["pdf"],
-    accept_multiple_files=True,
-    help="Upload one or more PDF invoices."
-)
+# In Streamlit Community Cloud, set INVOICEIQ_DEMO_MODE = "true"
+# in Advanced settings > Secrets. Local mode remains unchanged by default.
+try:
+    _demo_setting = st.secrets.get("INVOICEIQ_DEMO_MODE", os.getenv("INVOICEIQ_DEMO_MODE", "false"))
+except (FileNotFoundError, KeyError):
+    _demo_setting = os.getenv("INVOICEIQ_DEMO_MODE", "false")
+DEMO_MODE = str(_demo_setting).strip().lower() in {"1", "true", "yes", "on"}
 
 
-if uploaded_files:
-
-    st.success(
-        f"{len(uploaded_files)} invoice(s) uploaded."
+def demo_invoice(vendor, number, subtotal, tax, total, category, items):
+    """Create fictional invoice objects matching the existing validator interface."""
+    return SimpleNamespace(
+        vendor=vendor,
+        invoice_number=number,
+        invoice_date="2026-11-14",
+        subtotal=Decimal(subtotal),
+        tax=Decimal(tax),
+        total=Decimal(total),
+        category=category,
+        line_items=[SimpleNamespace(description=description, amount=Decimal(amount))
+                    for description, amount in items],
     )
 
-    current_files = []
 
-    for uploaded_file in uploaded_files:
+def build_demo_records():
+    """Five fictional examples; no PDF parsing or API calls."""
+    examples = [
+        ("InvoiceIQ_Test_Invoice_INV-2026-001.pdf",
+         demo_invoice("NORTHWEST OFFICE SUPPLIES", "INV-2026-001", "125", "10", "135", "Office Supplies",
+                      [("Printer paper", "45"), ("Ink cartridges", "80")])),
+        ("Duplicate_A.pdf",
+         demo_invoice("SUMMIT BUSINESS SERVICES", "DUP-2026-003", "100", "8", "108", "Professional Services",
+                      [("Consulting services", "100")])),
+        ("Duplicate_B.pdf",
+         demo_invoice("SUMMIT BUSINESS SERVICES", "DUP-2026-003", "100", "8", "108", "Professional Services",
+                      [("Consulting services", "100")])),
+        ("Incorrect_Subtotal.pdf",
+         demo_invoice("CEDAR OFFICE GOODS", "ERR-2026-001", "140", "11.20", "151.20", "Office Supplies",
+                      [("Desk supplies", "50"), ("Printer toner", "100")])),
+        ("Incorrect_Total.pdf",
+         demo_invoice("EVERGREEN EQUIPMENT", "ERR-2026-002", "200", "16", "225", "Office Supplies",
+                      [("Office equipment", "200")])),
+    ]
+    return [{"filename": filename, "invoice": invoice,
+             "errors": list(validate_invoice(invoice))}
+            for filename, invoice in examples]
 
-        file_bytes = uploaded_file.getvalue()
 
-        current_files.append({
-            "filename": uploaded_file.name,
-            "bytes": file_bytes,
-            "hash": get_file_hash(file_bytes)
-        })
-
+if DEMO_MODE:
+    st.info("Portfolio demo • Fictional invoices • No uploads or OpenAI API calls")
+    st.header("1. Explore Sample Invoices")
+    st.caption("Five fictional invoices demonstrate reconciliation, duplicate detection, and reporting.")
+    records = build_demo_records()
+else:
+    records = []
 
     # ==========================================
-    # PROCESS INVOICES
+    # UPLOAD SECTION
     # ==========================================
 
-    st.write("### AI Extraction")
+    st.header("1. Upload Invoices")
 
-    st.caption(
-        "Previously processed PDFs are reused "
-        "from the current session to avoid "
-        "unnecessary OpenAI API requests."
+    uploaded_files = st.file_uploader(
+        "Choose PDF invoices",
+        type=["pdf"],
+        accept_multiple_files=True,
+        help="Upload one or more PDF invoices."
     )
 
-    if st.button(
-        "Extract Accounting Data",
-        type="primary",
-        icon=":material/auto_awesome:"
-    ):
 
-        progress_bar = st.progress(0)
+    if uploaded_files:
 
-        total_files = len(current_files)
+        st.success(
+            f"{len(uploaded_files)} invoice(s) uploaded."
+        )
 
-        for index, file in enumerate(current_files):
+        current_files = []
 
-            file_hash = file["hash"]
-            filename = file["filename"]
+        for uploaded_file in uploaded_files:
 
-            if file_hash in st.session_state.processed_invoices:
+            file_bytes = uploaded_file.getvalue()
 
-                st.info(
-                    f"{filename}: Using saved extraction."
-                )
+            current_files.append({
+                "filename": uploaded_file.name,
+                "bytes": file_bytes,
+                "hash": get_file_hash(file_bytes)
+            })
 
-                progress_bar.progress(
-                    (index + 1) / total_files
-                )
 
-                continue
+        # ==========================================
+        # PROCESS INVOICES
+        # ==========================================
 
-            try:
+        st.write("### AI Extraction")
 
-                invoice_text = extract_pdf_text(
-                    file["bytes"]
-                )
+        st.caption(
+            "Previously processed PDFs are reused "
+            "from the current session to avoid "
+            "unnecessary OpenAI API requests."
+        )
 
-                if not invoice_text.strip():
+        if st.button(
+            "Extract Accounting Data",
+            type="primary",
+            icon=":material/auto_awesome:"
+        ):
 
-                    st.warning(
-                        f"{filename}: No readable PDF text."
+            progress_bar = st.progress(0)
+
+            total_files = len(current_files)
+
+            for index, file in enumerate(current_files):
+
+                file_hash = file["hash"]
+                filename = file["filename"]
+
+                if file_hash in st.session_state.processed_invoices:
+
+                    st.info(
+                        f"{filename}: Using saved extraction."
                     )
 
                     progress_bar.progress(
@@ -208,369 +250,372 @@ if uploaded_files:
 
                     continue
 
-                with st.spinner(
-                    f"Extracting {filename}..."
-                ):
+                try:
 
-                    invoice = extract_invoice_data(
-                        invoice_text
+                    invoice_text = extract_pdf_text(
+                        file["bytes"]
                     )
 
-                # Save only after successful extraction
-                st.session_state.processed_invoices[
-                    file_hash
-                ] = {
-                    "filename": filename,
-                    "invoice": invoice
-                }
+                    if not invoice_text.strip():
 
-                st.success(
-                    f"{filename}: Extraction complete."
-                )
+                        st.warning(
+                            f"{filename}: No readable PDF text."
+                        )
 
-            except Exception as error:
+                        progress_bar.progress(
+                            (index + 1) / total_files
+                        )
 
-                st.error(
-                    f"{filename}: Processing failed. "
-                    f"{error}"
-                )
+                        continue
 
-            progress_bar.progress(
-                (index + 1) / total_files
-            )
+                    with st.spinner(
+                        f"Extracting {filename}..."
+                    ):
 
+                        from ai_extractor import extract_invoice_data
+                        invoice = extract_invoice_data(
+                            invoice_text
+                        )
 
-    # ==========================================
-    # BUILD CURRENT RESULTS
-    # ==========================================
-
-    records = []
-
-    for file in current_files:
-
-        saved = st.session_state.processed_invoices.get(
-            file["hash"]
-        )
-
-        if saved is None:
-            continue
-
-        invoice = saved["invoice"]
-
-        # Revalidate on every rerun without
-        # making another OpenAI API request.
-        errors = list(validate_invoice(invoice))
-
-        records.append({
-            "filename": file["filename"],
-            "invoice": invoice,
-            "errors": errors
-        })
-
-
-    # ==========================================
-    # DUPLICATE DETECTION
-    # ==========================================
-
-    if records:
-
-        # Use fresh records each rerun to avoid
-        # accumulating duplicate warnings.
-        records = detect_duplicates(records)
-
-        # ======================================
-        # DASHBOARD
-        # ======================================
-
-        st.divider()
-
-        st.header("2. Accounting Dashboard")
-
-        total_invoices = len(records)
-
-        passed_invoices = sum(
-            1 for record in records
-            if not record["errors"]
-        )
-
-        review_invoices = (
-            total_invoices - passed_invoices
-        )
-
-        approved_total = sum(
-            (
-                Decimal(str(record["invoice"].total))
-                for record in records
-                if not record["errors"]
-                and record["invoice"].total is not None
-            ),
-            Decimal("0")
-        )
-
-        col1, col2, col3, col4 = st.columns(4)
-
-        with col1:
-            st.metric(
-                "Invoices Processed",
-                total_invoices
-            )
-
-        with col2:
-            st.metric(
-                "Validation Passed",
-                passed_invoices
-            )
-
-        with col3:
-            st.metric(
-                "Requires Review",
-                review_invoices
-            )
-
-        with col4:
-            st.metric(
-                "Approved Expenses",
-                format_currency(approved_total)
-            )
-
-        st.caption(
-            "Approved Expenses includes only "
-            "invoices that passed validation. "
-            "Review-required invoices are excluded."
-        )
-
-
-        # ======================================
-        # INVOICE RESULTS
-        # ======================================
-
-        st.divider()
-
-        st.header("3. Processed Invoices")
-
-        st.caption(
-            "Expand an invoice to view its "
-            "accounting information and exceptions."
-        )
-
-        for record in records:
-
-            invoice = record["invoice"]
-            errors = record["errors"]
-
-            status_icon = "⚠️" if errors else "✅"
-
-            label = (
-                f"{status_icon} {record['filename']}"
-            )
-
-            with st.expander(
-                label,
-                expanded=False
-            ):
-
-                if errors:
-
-                    st.warning(
-                        "Review Required — "
-                        "Accounting exceptions detected."
-                    )
-
-                    for error in errors:
-                        st.error(str(error))
-
-                else:
+                    # Save only after successful extraction
+                    st.session_state.processed_invoices[
+                        file_hash
+                    ] = {
+                        "filename": filename,
+                        "invoice": invoice
+                    }
 
                     st.success(
-                        "Passed — All accounting "
-                        "checks completed successfully."
+                        f"{filename}: Extraction complete."
                     )
 
-                st.write("### Invoice Information")
+                except Exception as error:
 
-                col1, col2 = st.columns(2)
-
-                with col1:
-
-                    st.write(
-                        "**Vendor:**",
-                        invoice.vendor
+                    st.error(
+                        f"{filename}: Processing failed. "
+                        f"{error}"
                     )
 
-                    st.write(
-                        "**Invoice Number:**",
-                        invoice.invoice_number
-                    )
-
-                    st.write(
-                        "**Invoice Date:**",
-                        str(invoice.invoice_date)
-                    )
-
-                    st.write(
-                        "**Expense Category:**",
-                        invoice.category
-                    )
-
-                with col2:
-
-                    st.write(
-                        "**Subtotal:**",
-                        format_currency(invoice.subtotal)
-                    )
-
-                    st.write(
-                        "**Sales Tax:**",
-                        format_currency(invoice.tax)
-                    )
-
-                    st.write(
-                        "**Invoice Total:**",
-                        format_currency(invoice.total)
-                    )
-
-                st.write("### Line Items")
-
-                items = [
-                    {
-                        "Description": item.description,
-                        "Amount": float(item.amount)
-                    }
-                    for item in invoice.line_items
-                ]
-
-                if items:
-
-                    st.dataframe(
-                        items,
-                        hide_index=True,
-                        use_container_width=True,
-                        column_config={
-                            "Description": st.column_config.TextColumn(
-                                "Description"
-                            ),
-                            "Amount": st.column_config.NumberColumn(
-                                "Amount",
-                                format="$%.2f"
-                            )
-                        }
-                    )
-
-                else:
-
-                    st.info(
-                        "No line items were extracted."
-                    )
+                progress_bar.progress(
+                    (index + 1) / total_files
+                )
 
 
-        # ======================================
-        # EXCEPTION SUMMARY
-        # ======================================
+        # ==========================================
+        # BUILD CURRENT RESULTS
+        # ==========================================
 
-        st.divider()
+        records = []
 
-        st.header("4. Accounting Exceptions")
+        for file in current_files:
 
-        if review_invoices == 0:
-
-            st.success(
-                "No accounting exceptions detected."
+            saved = st.session_state.processed_invoices.get(
+                file["hash"]
             )
 
-        else:
+            if saved is None:
+                continue
 
-            st.warning(
-                f"{review_invoices} invoice(s) "
-                "require manual review."
-            )
+            invoice = saved["invoice"]
 
-            exception_rows = []
+            # Revalidate on every rerun without
+            # making another OpenAI API request.
+            errors = list(validate_invoice(invoice))
 
-            for record in records:
+            records.append({
+                "filename": file["filename"],
+                "invoice": invoice,
+                "errors": errors
+            })
+    else:
+        st.info("Upload one or more PDF invoices to begin processing.")
 
-                for error in record["errors"]:
+if records:
 
-                    exception_rows.append({
-                        "Filename": record["filename"],
-                        "Invoice Number": (
-                            record["invoice"].invoice_number
+    # Validate duplicate invoice numbers using the existing validator.
+    records = detect_duplicates(records)
+
+    # ======================================
+    # DASHBOARD
+    # ======================================
+
+    st.divider()
+
+    st.header("2. Accounting Dashboard")
+
+    total_invoices = len(records)
+
+    passed_invoices = sum(
+        1 for record in records
+        if not record["errors"]
+    )
+
+    review_invoices = (
+        total_invoices - passed_invoices
+    )
+
+    approved_total = sum(
+        (
+            Decimal(str(record["invoice"].total))
+            for record in records
+            if not record["errors"]
+            and record["invoice"].total is not None
+        ),
+        Decimal("0")
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric(
+            "Invoices Processed",
+            total_invoices
+        )
+
+    with col2:
+        st.metric(
+            "Validation Passed",
+            passed_invoices
+        )
+
+    with col3:
+        st.metric(
+            "Requires Review",
+            review_invoices
+        )
+
+    with col4:
+        st.metric(
+            "Approved Expenses",
+            format_currency(approved_total)
+        )
+
+    st.caption(
+        "Approved Expenses includes only "
+        "invoices that passed validation. "
+        "Review-required invoices are excluded."
+    )
+
+
+    # ======================================
+    # INVOICE RESULTS
+    # ======================================
+
+    st.divider()
+
+    st.header("3. Processed Invoices")
+
+    st.caption(
+        "Expand an invoice to view its "
+        "accounting information and exceptions."
+    )
+
+    for record in records:
+
+        invoice = record["invoice"]
+        errors = record["errors"]
+
+        status_icon = "⚠️" if errors else "✅"
+
+        label = (
+            f"{status_icon} {record['filename']}"
+        )
+
+        with st.expander(
+            label,
+            expanded=False
+        ):
+
+            if errors:
+
+                st.warning(
+                    "Review Required — "
+                    "Accounting exceptions detected."
+                )
+
+                for error in errors:
+                    st.error(str(error))
+
+            else:
+
+                st.success(
+                    "Passed — All accounting "
+                    "checks completed successfully."
+                )
+
+            st.write("### Invoice Information")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.write(
+                    "**Vendor:**",
+                    invoice.vendor
+                )
+
+                st.write(
+                    "**Invoice Number:**",
+                    invoice.invoice_number
+                )
+
+                st.write(
+                    "**Invoice Date:**",
+                    str(invoice.invoice_date)
+                )
+
+                st.write(
+                    "**Expense Category:**",
+                    invoice.category
+                )
+
+            with col2:
+
+                st.write(
+                    "**Subtotal:**",
+                    format_currency(invoice.subtotal)
+                )
+
+                st.write(
+                    "**Sales Tax:**",
+                    format_currency(invoice.tax)
+                )
+
+                st.write(
+                    "**Invoice Total:**",
+                    format_currency(invoice.total)
+                )
+
+            st.write("### Line Items")
+
+            items = [
+                {
+                    "Description": item.description,
+                    "Amount": float(item.amount)
+                }
+                for item in invoice.line_items
+            ]
+
+            if items:
+
+                st.dataframe(
+                    items,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Description": st.column_config.TextColumn(
+                            "Description"
                         ),
-                        "Issue": str(error)
-                    })
+                        "Amount": st.column_config.NumberColumn(
+                            "Amount",
+                            format="$%.2f"
+                        )
+                    }
+                )
 
-            st.dataframe(
-                exception_rows,
-                hide_index=True,
-                use_container_width=True
-            )
+            else:
+
+                st.info(
+                    "No line items were extracted."
+                )
 
 
-        # ======================================
-        # EXCEL REPORT
-        # ======================================
+    # ======================================
+    # EXCEPTION SUMMARY
+    # ======================================
 
-        st.divider()
+    st.divider()
 
-        st.header("5. Export Accounting Report")
+    st.header("4. Accounting Exceptions")
 
-        st.write(
-            "Download a formatted Excel workbook "
-            "containing all processed invoices, "
-            "line items, approved expense totals, "
-            "and accounting exceptions."
+    if review_invoices == 0:
+
+        st.success(
+            "No accounting exceptions detected."
         )
-
-        st.caption(
-            "Workbook includes four worksheets: "
-            "Invoice Summary, Line Items, "
-            "Expense Analysis, and Exceptions Report."
-        )
-
-        try:
-
-            excel_data = create_excel_report(
-                records
-            )
-
-            st.download_button(
-                label="📥 Download Excel Report",
-                data=excel_data,
-                file_name="InvoiceIQ_Accounting_Report.xlsx",
-                mime=(
-                    "application/vnd.openxmlformats-officedocument."
-                    "spreadsheetml.sheet"
-                ),
-                type="primary",
-                use_container_width=True
-            )
-
-            st.caption(
-                "The Excel report is generated "
-                "from saved results. Downloading "
-                "does not make another OpenAI "
-                "API request."
-            )
-
-        except Exception as error:
-
-            st.error(
-                f"Unable to generate Excel report: {error}"
-            )
 
     else:
 
-        st.info(
-            "Click Extract Accounting Data "
-            "to process your uploaded invoices."
+        st.warning(
+            f"{review_invoices} invoice(s) "
+            "require manual review."
+        )
+
+        exception_rows = []
+
+        for record in records:
+
+            for error in record["errors"]:
+
+                exception_rows.append({
+                    "Filename": record["filename"],
+                    "Invoice Number": (
+                        record["invoice"].invoice_number
+                    ),
+                    "Issue": str(error)
+                })
+
+        st.dataframe(
+            exception_rows,
+            hide_index=True,
+            use_container_width=True
+        )
+
+
+    # ======================================
+    # EXCEL REPORT
+    # ======================================
+
+    st.divider()
+
+    st.header("5. Export Accounting Report")
+
+    st.write(
+        "Download a formatted Excel workbook "
+        "containing all processed invoices, "
+        "line items, approved expense totals, "
+        "and accounting exceptions."
+    )
+
+    st.caption(
+        "Workbook includes four worksheets: "
+        "Invoice Summary, Line Items, "
+        "Expense Analysis, and Exceptions Report."
+    )
+
+    try:
+
+        excel_data = create_excel_report(
+            records
+        )
+
+        st.download_button(
+            label="📥 Download Excel Report",
+            data=excel_data,
+            file_name="InvoiceIQ_Accounting_Report.xlsx",
+            mime=(
+                "application/vnd.openxmlformats-officedocument."
+                "spreadsheetml.sheet"
+            ),
+            type="primary",
+            use_container_width=True
+        )
+
+        st.caption(
+            "The Excel report is generated "
+            "from saved results. Downloading "
+            "does not make another OpenAI "
+            "API request."
+        )
+
+    except Exception as error:
+
+        st.error(
+            f"Unable to generate Excel report: {error}"
         )
 
 else:
-
-    st.info(
-        "Upload one or more PDF invoices "
-        "to begin processing."
-    )
-
+    st.info("No processed invoices yet. Upload PDFs and extract accounting data to begin.")
 
 # ==========================================
 # FOOTER
