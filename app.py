@@ -170,11 +170,35 @@ def build_demo_records():
             for filename, invoice in examples]
 
 
+
 if DEMO_MODE:
-    st.info("Portfolio demo • Fictional invoices • No uploads or OpenAI API calls")
-    st.header("1. Explore Sample Invoices")
-    st.caption("Five fictional invoices demonstrate reconciliation, duplicate detection, and reporting.")
-    records = build_demo_records()
+    st.info("Interactive portfolio demo • Fictional data • No OpenAI API calls")
+
+    st.header("1. Select Sample Invoices")
+
+    st.caption(
+        "Choose invoices to process. Some contain intentional "
+        "accounting errors or duplicate invoice numbers."
+    )
+
+    demo_examples = build_demo_records()
+
+    selected_filenames = st.multiselect(
+        "Select invoices",
+        options=[record["filename"] for record in demo_examples],
+        default=[],
+        help="Select one or more fictional invoices to test."
+    )
+
+    if st.button("Process Selected Invoices", type="primary"):
+        st.session_state.demo_selection = selected_filenames
+
+    records = [
+        record
+        for record in demo_examples
+        if record["filename"] in st.session_state.get("demo_selection", [])
+    ]
+
 else:
     records = []
 
@@ -614,8 +638,18 @@ if records:
             f"Unable to generate Excel report: {error}"
         )
 
+
 else:
-    st.info("No processed invoices yet. Upload PDFs and extract accounting data to begin.")
+    if DEMO_MODE:
+        st.info(
+            "Select sample invoices above and click "
+            "'Process Selected Invoices' to begin."
+        )
+    else:
+        st.info(
+            "No processed invoices yet. "
+            "Upload PDFs and extract accounting data to begin."
+        )
 
 # ==========================================
 # FOOTER
